@@ -1,7 +1,23 @@
+require('./instrumentation.js'); // Initialize OpenTelemetry SDK
+
 const express = require('express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const utils = require('./utils.js');
+const { trace, metrics } = require('@opentelemetry/api');
+
+const tracer = trace.getTracer('flight-app-js');
+const meter = metrics.getMeter('flight-app-js');
+
+// Create custom metrics
+const requestCounter = meter.createCounter('root_endpoint_requests', {
+  description: 'Counts number of requests to root endpoint',
+});
+
+const randomIntHistogram = meter.createHistogram('random_int_generated', {
+  description: 'Records the random int generated in /flights endpoint',
+});
+
 
 const AIRLINES = ['AA', 'UA', 'DL'];
 
@@ -30,6 +46,12 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
  *         description: Returns ok
  */
 app.get('/', (req, res) => {
+  // Increment the counter metric
+  requestCounter.add(1);
+
+  // Custom log
+  console.log('Root endpoint was called');  
+
   res.send({'message': 'ok'});
 });
 
@@ -53,8 +75,14 @@ app.get('/', (req, res) => {
  */
 app.get('/airlines/:err?', (req, res) => {
   if (req.params.err === 'raise') {
-    throw new Error('Raise test exception');
+    const err = new Error('Raise test exception');
+    console.error('Error in /airlines endpoint:', err);
+    throw err;    
   }
+
+  // Custom log
+  console.log('Airlines endpoint was called');
+
   res.send({'airlines': AIRLINES});
 });
 
@@ -88,9 +116,24 @@ app.get('/airlines/:err?', (req, res) => {
  */
 app.get('/flights/:airline/:err?', (req, res) => {
   if (req.params.err === 'raise') {
-    throw new Error('Raise test exception');
+    const err = new Error('Raise test exception');
+    console.error('Error in /flights endpoint:', err);
+    throw err;
   }
+  // Start a custom span
+  const span = tracer.startSpan('generate_random_int');
+
+  // Custom log
+  console.log(`Flights endpoint called for airline: ${req.params.airline}`);
+  
   const randomInt = utils.getRandomInt(100, 999);
+
+  // Record the random int in the histogram metric
+  randomIntHistogram.record(randomInt);
+
+  // End the custom span
+  span.end();
+
   res.send({[req.params.airline]: [randomInt]});
 });
 
