@@ -15,7 +15,6 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
@@ -68,13 +67,13 @@ tracer = trace.get_tracer(__name__)
 
 # Define custom metrics
 root_counter = meter.create_counter(
-    name="root_request_counter",
+    name="root_endpoint_requests",
     description="Counts the number of requests to the root endpoint",
     unit="1",
 )
 
 random_int_histogram = meter.create_histogram(
-    name="random_int_histogram",
+    name="random_int_generated",
     description="Records the random int generated in the /flights endpoint",
     unit="1",
 )
@@ -87,7 +86,7 @@ def home():
     root_counter.add(1)
 
     # Custom log
-    logging.info("Root endpoint accessed.")
+    logging.info("Root endpoint was called.")
 
     return jsonify({"message": "ok"})
 
@@ -107,13 +106,16 @@ def get_airlines(err=None):
         description: Returns a list of airlines
     """
     if err == "raise":
-        raise Exception("Raise test exception")
+        e = Exception("Raise test exception")
+        logging.error("Error in /airlines endpoint: {e.args[0]}")
+        raise e
 
     # Custom log
     logging.info("Airlines endpoint accessed.")
 
     return jsonify({"airlines": AIRLINES})
 
+@app.route("/flights/<airline>/", defaults={'err': None})
 @app.route("/flights/<airline>/<err>")
 def get_flights(airline, err=None):
     """Get flights endpoint. Set err to "raise" to trigger an exception.

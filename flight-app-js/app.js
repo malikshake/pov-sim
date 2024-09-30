@@ -102,7 +102,7 @@ app.get('/airlines/:err?', (req, res) => {
   }
   logger.emit({
     severityNumber: SeverityNumber.INFO,
-    body: 'Airlines endpoint was called',
+    body: 'Airlines endpoint accessed.',
     attributes
   });  
 
@@ -153,20 +153,20 @@ app.get('/flights/:airline/:err?', (req, res) => {
   // Start a custom span
   const span = tracer.startSpan('generate_random_int');
 
+  const randomInt = utils.getRandomInt(100, 999);
+
+  // Record the random int in the histogram metric
+  randomIntHistogram.record(randomInt);
+
   // Custom log
   const attributes = {
     'endpoint': 'flights'
   }
   logger.emit({
     severityNumber: SeverityNumber.INFO,
-    body: `Flights endpoint called for airline: ${req.params.airline}`,
+    body: `Flights endpoint accessed for airline ${req.params.airline} with random int ${randomInt}`,
     attributes
   });  
-
-  const randomInt = utils.getRandomInt(100, 999);
-
-  // Record the random int in the histogram metric
-  randomIntHistogram.record(randomInt);
 
   // End the custom span
   span.end();
