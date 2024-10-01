@@ -1,7 +1,24 @@
+require('./instrumentation.js'); // Initialize OpenTelemetry SDK
+
 const express = require('express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 const utils = require('./utils.js');
+const { trace, metrics } = require('@opentelemetry/api');
+const { logs, SeverityNumber } = require('@opentelemetry/api-logs');
+
+const tracer = trace.getTracer('flight-app-js');
+const meter = metrics.getMeter('flight-app-js');
+const logger = logs.getLogger('flight-app-js');
+
+// Create custom metrics
+const requestCounter = meter.createCounter('root_endpoint_requests', {
+  description: 'Counts number of requests to root endpoint',
+});
+
+const randomIntHistogram = meter.createHistogram('random_int_generated', {
+  description: 'Records the random int generated in /flights endpoint',
+});
 
 const AIRLINES = ['AA', 'UA', 'DL'];
 
@@ -30,6 +47,19 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
  *         description: Returns ok
  */
 app.get('/', (req, res) => {
+  // Increment the counter metric
+  requestCounter.add(1);
+
+  // Custom log
+  const attributes = {
+    'endpoint': 'root'
+  }
+  logger.emit({
+    severityNumber: SeverityNumber.INFO,
+    body: 'Root endpoint was called',
+    attributes
+  });  
+
   res.send({'message': 'ok'});
 });
 
@@ -53,8 +83,29 @@ app.get('/', (req, res) => {
  */
 app.get('/airlines/:err?', (req, res) => {
   if (req.params.err === 'raise') {
-    throw new Error('Raise test exception');
+    const err = new Error('Raise test exception');
+    console.log('Error in /airlines endpoint:', err.message);
+    const attributes = {
+      'endpoint': 'airlines'
+    }
+    logger.emit({
+      severityNumber: SeverityNumber.ERROR,
+      body: `Error in /airlines endpoint: ${err.message}`,
+      attributes
+    });  
+    throw err;    
   }
+
+  // Custom log
+  const attributes = {
+    'endpoint': 'airlines'
+  }
+  logger.emit({
+    severityNumber: SeverityNumber.INFO,
+    body: 'Airlines endpoint accessed.',
+    attributes
+  });  
+
   res.send({'airlines': AIRLINES});
 });
 
@@ -88,13 +139,46 @@ app.get('/airlines/:err?', (req, res) => {
  */
 app.get('/flights/:airline/:err?', (req, res) => {
   if (req.params.err === 'raise') {
-    throw new Error('Raise test exception');
+    const err = new Error('Raise test exception');
+    const attributes = {
+      'endpoint': '/flights'
+    }
+    logger.emit({
+      severityNumber: SeverityNumber.ERROR,
+      body: `Error in /flights endpoint: ${err.message}`,
+      attributes
+    });  
+    throw err;
   }
+  // Start a custom span
+  const span = tracer.startSpan('generate_random_int');
+
   const randomInt = utils.getRandomInt(100, 999);
+
+  // Record the random int in the histogram metric
+  randomIntHistogram.record(randomInt);
+
+  // Custom log
+  const attributes = {
+    'endpoint': 'flights'
+  }
+  logger.emit({
+    severityNumber: SeverityNumber.INFO,
+    body: `Flights endpoint accessed for airline ${req.params.airline} with random int ${randomInt}`,
+    attributes
+  });  
+
+  // End the custom span
+  span.end();
+
   res.send({[req.params.airline]: [randomInt]});
 });
 
 const PORT = 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
+  logger.emit({
+    severityNumber: SeverityNumber.INFO,
+    body: `Server is running on http://localhost:${PORT}`
+  });  
 });
