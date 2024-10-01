@@ -1,0 +1,27 @@
+logging {
+	level  = "debug"
+	format = "logfmt"
+}
+
+otelcol.auth.basic "default" {
+	username = sys.env("GRAFANA_CLOUD_INSTANCE_ID")
+	password = sys.env("GRAFANA_CLOUD_API_KEY")
+}
+
+otelcol.receiver.otlp "default" {
+	http { }
+
+	output {
+		metrics = [otelcol.exporter.otlphttp.default.input]
+		logs    = [otelcol.exporter.otlphttp.default.input]
+		traces  = [otelcol.exporter.otlphttp.default.input]
+	}
+}
+
+otelcol.exporter.otlphttp "default" {
+	client {
+		endpoint           = sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")
+		http2_ping_timeout = "0s"
+		auth               = otelcol.auth.basic.default.handler
+	}
+}
